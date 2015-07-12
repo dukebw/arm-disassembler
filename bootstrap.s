@@ -3,6 +3,7 @@
 _start:
     mov sp,#0x100
     ldr r0,thumbstart_add
+	moveq sp,#0x10000
     bx r0
 
 thumbstart_add:
