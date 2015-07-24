@@ -1,80 +1,5 @@
 #include "allheads.h"
-
-#define ARM_INSTRUCTION_LENGTH 4
-#define THUMB_INSTRUCTION_LENGTH 2
-
-#define ADC_IMMEDIATE 0x2A
-#define ADC_IMMEDIATE_S 0x2B
-#define ADC 0xA
-#define ADC_S 0xB
-#define ADD_IMMEDIATE 0x28
-#define ADD_IMMEDIATE_S 0x29
-#define ADD 0x8
-#define ADD_S 0x9
-#define BRANCH_EXCHANGE 0x12
-#define BRANCH 0xA
-#define BRANCH_LINK 0xB
-#define LOAD_IMMEDIATE 0x59
-#define MOV_IMMEDIATE 0x3A
-#define MOV_IMMEDIATE_S 0x3B
-#define MRS_CPSR 0x10
-#define MRS_SPSR 0x14
-
-#define LINK_REGISTER 14
-#define PROGRAM_COUNTER_REGISTER 15
-#define ROM_SIZE 0x100000
-#define GENERAL_PURPOSE_REG_COUNT 32
-
-#define COND_EQ 0x0
-#define COND_NE 0x1
-#define COND_CS_HS 0x2
-#define COND_CC_LO 0x3
-#define COND_MI 0x4
-#define COND_PL 0x5
-#define COND_VS 0x6
-#define COND_VC 0x7
-#define COND_HI 0x8
-#define COND_LS 0x9
-#define COND_GE 0xA
-#define COND_LT 0xB
-#define COND_GT 0xC
-#define COND_LE 0xD
-#define COND_AL 0xE
-
-#define MODE_USER 0x10
-#define MODE_FIQ 0x11
-#define MODE_IRQ 0x12
-#define MODE_SUPERVISOR 0x13
-#define MODE_ABORT 0x17
-#define MODE_UNDEFINED 0x1B
-#define MODE_SYSTEM 0x1F
-
-#define N_BIT_INDEX 31
-#define Z_BIT_INDEX 30
-#define C_BIT_INDEX 29
-#define V_BIT_INDEX 28
-#define Q_BIT_INDEX 27
-#define S_BIT_INDEX 20
-#define ARM_STATE_BIT_INDEX 5
-#define DISABLE_FAST_INTERRUPTS_BIT_INDEX 6
-#define DISABLE_NORMAL_INTERRUPTS_BIT_INDEX 7
-
-// NOTE(brendan): data processing operand instructions
-#define SHIFT_TYPE(Instruction) GET_BITS((Instruction), 4, 6)
-#define SHIFT_TYPE_LSL 0
-#define SHIFT_TYPE_LSR 2
-
-#define GET_BITS(Register, StartBit, EndBit) \
-    (((uint32)(Register) << (31 - (EndBit))) >> ((StartBit) + 31 - (EndBit)))
-#define ISOLATE_BIT(Register, Bit) (((Register) >> (Bit)) & 1)
-#define N_BIT(Register) ISOLATE_BIT((Register), N_BIT_INDEX)
-#define Z_BIT(Register) ISOLATE_BIT((Register), Z_BIT_INDEX)
-#define C_BIT(Register) ISOLATE_BIT((Register), C_BIT_INDEX)
-#define V_BIT(Register) ISOLATE_BIT((Register), V_BIT_INDEX)
-#define Q_BIT(Register) ISOLATE_BIT((Register), Q_BIT_INDEX)
-#define S_BIT(Instruction) ISOLATE_BIT((Instruction), S_BIT_INDEX)
-
-#define SET_BIT(Register, Value, BitToSet) (Register) |= (((Value) & 1) << (BitToSet))
+#include "arm_disassembler.h"
 
 global_variable char *
 ConditionCodeStrings[] = {
@@ -83,7 +8,6 @@ ConditionCodeStrings[] = {
 
 // TODO(brendan): put into arm_state struct (not global)
 global_variable uint8 Rom[ROM_SIZE];
-global_variable uint32 GeneralPurposeRegs[GENERAL_PURPOSE_REG_COUNT];
 
 internal uint32
 ComputeShifterOperand(uint32 Instruction)
@@ -99,7 +23,7 @@ internal char *
 EncodingToMnemonic(uint32 InstructionEncoding)
 {
     static char *MnemonicArray[] = {
-        "adc", "adcs", "add", "adds"
+        "adc", "adcs", "add", "adds", "and", "ands", "bic", "bics", "cmn"
     };
     switch (InstructionEncoding)
     {
@@ -107,25 +31,46 @@ EncodingToMnemonic(uint32 InstructionEncoding)
         case ADC:
         {
             return MnemonicArray[0];
-            break;
         }
         case ADC_IMMEDIATE_S:
         case ADC_S:
         {
             return MnemonicArray[1];
-            break;
         }
         case ADD_IMMEDIATE:
         case ADD:
         {
             return MnemonicArray[2];
-            break;
         }
         case ADD_IMMEDIATE_S:
         case ADD_S:
         {
             return MnemonicArray[3];
-            break;
+        }
+        case AND:
+        case AND_IMMEDIATE:
+        {
+            return MnemonicArray[4];
+        }
+        case AND_S:
+        case AND_IMMEDIATE_S:
+        {
+            return MnemonicArray[5];
+        }
+        case BIC:
+        case BIC_IMMEDIATE:
+        {
+            return MnemonicArray[6];
+        }
+        case BIC_S:
+        case BIC_IMMEDIATE_S:
+        {
+            return MnemonicArray[7];
+        }
+        case COMPARE_NEG:
+        case COMPARE_NEG_IMMEDIATE:
+        {
+            return MnemonicArray[8];
         }
         default:
         {
@@ -133,6 +78,21 @@ EncodingToMnemonic(uint32 InstructionEncoding)
             break;
         }
     }
+}
+
+internal bool32
+IsCompareInstruction(uint32 InstructionEncoding)
+{
+    bool32 Result;
+    if ((InstructionEncoding == COMPARE_NEG) || (InstructionEncoding == COMPARE_NEG_IMMEDIATE))
+    {
+        Result = true;
+    }
+    else
+    {
+        Result = false;
+    }
+    return Result;
 }
 
 // TODO(brendan): simulator?
@@ -162,19 +122,56 @@ int main(int argc, char **argv)
 		{
 			uint32 ConditionCode = NextInstruction >> 28;
 			uint32 InstructionEncoding = (NextInstruction >> 20) & 0xFF;
-            if ((InstructionEncoding >> 5) == 0x5)
+            if ((GET_BITS(NextInstruction, 20, 31) == 0xE12) && (GET_BITS(NextInstruction, 4, 7) == 0x7))
+            {
+                printf("bkpt 0x%x\n", (NextInstruction & 0xF) | (GET_BITS(NextInstruction, 8, 19) << 4));
+            }
+            // TODO(brendan): CDP
+            else if ((GET_BITS(NextInstruction, 24, 27) == 0xE) && (ISOLATE_BIT(NextInstruction, 4) == 0))
+            {
+                uint32 OpCode1 = GET_BITS(NextInstruction, 20, 23);
+                uint32 OpCode2 = GET_BITS(NextInstruction, 5, 7);
+                uint32 FirstOperand = GET_BITS(NextInstruction, 16, 19);
+                uint32 SecondOperand = NextInstruction & 0xF;
+                uint32 DestinationRegister = GET_BITS(NextInstruction, 12, 15);;
+                uint32 Coprocessor = GET_BITS(NextInstruction, 8, 11);
+                if (ConditionCode == 0xF)
+                {
+                    printf("cdp2");
+                }
+                else
+                {
+                    printf("cdp%s", ConditionCodeStrings[ConditionCode]);
+                }
+                printf(" p%d, %d, c%d, c%d, c%d, %d\n", Coprocessor, OpCode1, DestinationRegister, FirstOperand,
+                                                        SecondOperand, OpCode2);
+            }
+            else if ((InstructionEncoding >> 5) == 0x5)
             {
                 uint32 SignExtendedImmediate = NextInstruction & 0xFFFFFF;
                 if (ISOLATE_BIT(SignExtendedImmediate, 23))
                 {
                     SignExtendedImmediate |= 0xFF000000;
                 }
-                printf("b");
-                if (ISOLATE_BIT(NextInstruction, 24))
+                if (ConditionCode == 0xF)
                 {
-                    printf("l");
+                    // TODO(brendan): set bit[1] of signed immediate to H bit
+                    printf("blx #0x%x\n",
+                           RomIndex + ((SignExtendedImmediate << 2) + (ISOLATE_BIT(NextInstruction, 24) << 1)));
                 }
-                printf(" #0x%x\n", RomIndex + (SignExtendedImmediate << 2));
+                else
+                {
+                    if (ISOLATE_BIT(NextInstruction, 24))
+                    {
+                        printf("bl");
+                    }
+                    else
+                    {
+                        printf("b");
+                    }
+                    printf("%s #0x%x\n", ConditionCodeStrings[ConditionCode],
+                                         RomIndex + (SignExtendedImmediate << 2));
+                }
             }
             else
             {
@@ -188,6 +185,16 @@ int main(int argc, char **argv)
                     case ADD_IMMEDIATE_S:
                     case ADD:
                     case ADD_S:
+                    case AND:
+                    case AND_S:
+                    case AND_IMMEDIATE:
+                    case AND_IMMEDIATE_S:
+                    case BIC:
+                    case BIC_S:
+                    case BIC_IMMEDIATE:
+                    case BIC_IMMEDIATE_S:
+                    case COMPARE_NEG:
+                    case COMPARE_NEG_IMMEDIATE:
                     {
                         // TODO(brendan): implement?
                         Stopif(~ISOLATE_BIT(NextInstruction, 25) &
@@ -200,47 +207,149 @@ int main(int argc, char **argv)
                         if (ISOLATE_BIT(NextInstruction, 25))
                         {
                             uint32 ShifterOperand = ComputeShifterOperand(NextInstruction);
-                            printf("%s%s r%d, r%d, #0x%x\n", EncodingToMnemonic(InstructionEncoding),
-                                                             ConditionCodeStrings[ConditionCode],
-                                                             DestinationRegister,
-                                                             FirstOperandRegister,
-                                                             ShifterOperand);
+                            if (IsCompareInstruction(InstructionEncoding))
+                            {
+                                printf("%s%s r%d, #0x%x\n", EncodingToMnemonic(InstructionEncoding),
+                                                            ConditionCodeStrings[ConditionCode],
+                                                            FirstOperandRegister,
+                                                            ShifterOperand);
+                            }
+                            else
+                            {
+                                printf("%s%s r%d, r%d, #0x%x\n", EncodingToMnemonic(InstructionEncoding),
+                                                                 ConditionCodeStrings[ConditionCode],
+                                                                 DestinationRegister,
+                                                                 FirstOperandRegister,
+                                                                 ShifterOperand);
+                            }
                         }
                         else if (GET_BITS(NextInstruction, 4, 11) == 0)
                         {
                             uint32 SecondOperandRegister = NextInstruction & 0xF;
-                            printf("%s%s r%d, r%d, r%d\n", EncodingToMnemonic(InstructionEncoding),
-                                                           ConditionCodeStrings[ConditionCode],
-                                                           DestinationRegister,
-                                                           FirstOperandRegister,
-                                                           SecondOperandRegister);
+                            if (IsCompareInstruction(InstructionEncoding))
+                            {
+                                printf("%s%s r%d, r%d\n", EncodingToMnemonic(InstructionEncoding),
+                                                          ConditionCodeStrings[ConditionCode],
+                                                          FirstOperandRegister,
+                                                          SecondOperandRegister);
+                            }
+                            else
+                            {
+                                printf("%s%s r%d, r%d, r%d\n", EncodingToMnemonic(InstructionEncoding),
+                                                               ConditionCodeStrings[ConditionCode],
+                                                               DestinationRegister,
+                                                               FirstOperandRegister,
+                                                               SecondOperandRegister);
+                            }
                         }
-                        // TODO(brendan): debug NextInstruction shifting to 0 for LSR
-                        else if ((SHIFT_TYPE(NextInstruction) == SHIFT_TYPE_LSL) ||
-                                 (SHIFT_TYPE(NextInstruction) == SHIFT_TYPE_LSR))
+                        else if (GET_BITS(NextInstruction, 4, 11) == 6)
                         {
-                            char ShiftTypeString[] = SHIFT_TYPE(NextInstruction) == SHIFT_TYPE_LSR ?
-                                                     "LSR" : "LSL";
+                            uint32 SecondOperandRegister = NextInstruction & 0xF;
+                            if (IsCompareInstruction(InstructionEncoding))
+                            {
+                                printf("%s%s r%d, r%d, RRX\n", EncodingToMnemonic(InstructionEncoding),
+                                                               ConditionCodeStrings[ConditionCode],
+                                                               FirstOperandRegister,
+                                                               SecondOperandRegister);
+                            }
+                            else
+                            {
+                                printf("%s%s r%d, r%d, r%d, RRX\n", EncodingToMnemonic(InstructionEncoding),
+                                                                    ConditionCodeStrings[ConditionCode],
+                                                                    DestinationRegister,
+                                                                    FirstOperandRegister,
+                                                                    SecondOperandRegister);
+                            }
+                        }
+                        else if ((SHIFT_TYPE_IMMEDIATE(NextInstruction) == SHIFT_TYPE_LSL_IMMEDIATE) ||
+                                 (SHIFT_TYPE_IMMEDIATE(NextInstruction) == SHIFT_TYPE_LSR_IMMEDIATE) ||
+                                 (SHIFT_TYPE_IMMEDIATE(NextInstruction) == SHIFT_TYPE_ASR_IMMEDIATE) ||
+                                 (SHIFT_TYPE_IMMEDIATE(NextInstruction) == SHIFT_TYPE_ROR_IMMEDIATE))
+                        {
+                            char *ShiftTypeString;
+                            uint32 ShiftType = SHIFT_TYPE_IMMEDIATE(NextInstruction);
+                            if (ShiftType == SHIFT_TYPE_LSL_IMMEDIATE)
+                            {
+                                ShiftTypeString = "LSL";
+                            }
+                            else if (ShiftType == SHIFT_TYPE_LSR_IMMEDIATE)
+                            {
+                                ShiftTypeString = "LSR";
+                            }
+                            else if (ShiftType == SHIFT_TYPE_ROR_IMMEDIATE)
+                            {
+                                ShiftTypeString = "ROR";
+                            }
+                            else
+                            {
+                                ShiftTypeString = "ASR";
+                            }
                             uint32 SecondOperandRegister = NextInstruction & 0xF;
                             uint32 ShiftImmediate = GET_BITS(NextInstruction, 7, 11);
-                            printf("%s%s r%d, r%d, r%d %s #%d\n", EncodingToMnemonic(InstructionEncoding),
-                                                                   ConditionCodeStrings[ConditionCode],
-                                                                   DestinationRegister,
-                                                                   FirstOperandRegister,
-                                                                   SecondOperandRegister,
-                                                                   ShiftTypeString,
-                                                                   ShiftImmediate);
+                            if (IsCompareInstruction(InstructionEncoding))
+                            {
+                                printf("%s%s r%d, r%d %s #%d\n", EncodingToMnemonic(InstructionEncoding),
+                                                                 ConditionCodeStrings[ConditionCode],
+                                                                 FirstOperandRegister,
+                                                                 SecondOperandRegister,
+                                                                 ShiftTypeString,
+                                                                 ShiftImmediate);
+                            }
+                            else
+                            {
+                                printf("%s%s r%d, r%d, r%d %s #%d\n", EncodingToMnemonic(InstructionEncoding),
+                                                                      ConditionCodeStrings[ConditionCode],
+                                                                      DestinationRegister,
+                                                                      FirstOperandRegister,
+                                                                      SecondOperandRegister,
+                                                                      ShiftTypeString,
+                                                                      ShiftImmediate);
+                            }
                         }
-                        else if (GET_BITS(NextInstruction, 4, 7) == 1)
+                        else if ((SHIFT_TYPE_REGISTER(NextInstruction) == SHIFT_TYPE_LSL_REGISTER) ||
+                                 (SHIFT_TYPE_REGISTER(NextInstruction) == SHIFT_TYPE_ASR_REGISTER) ||
+                                 (SHIFT_TYPE_REGISTER(NextInstruction) == SHIFT_TYPE_LSR_REGISTER) ||
+                                 (SHIFT_TYPE_REGISTER(NextInstruction) == SHIFT_TYPE_ROR_REGISTER))
                         {
                             uint32 SecondOperandRegister = NextInstruction & 0xF;
                             uint32 ShiftRegister = GET_BITS(NextInstruction, 8, 11);
-                            printf("%s%s r%d, r%d, r%d LSL r%d\n", EncodingToMnemonic(InstructionEncoding),
-                                                                   ConditionCodeStrings[ConditionCode],
-                                                                   DestinationRegister,
-                                                                   FirstOperandRegister,
-                                                                   SecondOperandRegister,
-                                                                   ShiftRegister);
+                            uint32 ShiftType = SHIFT_TYPE_REGISTER(NextInstruction);
+                            char *ShiftTypeString;
+                            if (ShiftType == SHIFT_TYPE_LSL_REGISTER)
+                            {
+                                ShiftTypeString = "LSL";
+                            }
+                            else if (ShiftType == SHIFT_TYPE_LSR_REGISTER)
+                            {
+                                ShiftTypeString = "LSR";
+                            }
+                            else if (ShiftType == SHIFT_TYPE_ROR_REGISTER)
+                            {
+                                ShiftTypeString = "ROR";
+                            }
+                            else
+                            {
+                                ShiftTypeString = "ASR";
+                            }
+                            if (IsCompareInstruction(InstructionEncoding))
+                            {
+                                printf("%s%s r%d, r%d %s r%d\n", EncodingToMnemonic(InstructionEncoding),
+                                                                 ConditionCodeStrings[ConditionCode],
+                                                                 FirstOperandRegister,
+                                                                 SecondOperandRegister,
+                                                                 ShiftTypeString,
+                                                                 ShiftRegister);
+                            }
+                            else
+                            {
+                                printf("%s%s r%d, r%d, r%d %s r%d\n", EncodingToMnemonic(InstructionEncoding),
+                                                                      ConditionCodeStrings[ConditionCode],
+                                                                      DestinationRegister,
+                                                                      FirstOperandRegister,
+                                                                      SecondOperandRegister,
+                                                                      ShiftTypeString,
+                                                                      ShiftRegister);
+                            }
                         }
                         break;
                     }
@@ -248,11 +357,32 @@ int main(int argc, char **argv)
                     case BRANCH_EXCHANGE:
                     {
                         uint32 RegisterIndex = NextInstruction & 0xF;
-                        printf("bx");
-                        printf(ConditionCodeStrings[ConditionCode]);
-                        printf(" r%d\n", RegisterIndex);
-                        GeneralPurposeRegs[PROGRAM_COUNTER_REGISTER] = GeneralPurposeRegs[RegisterIndex] &
-                                                                       0xFFFFFFFE;
+                        if (GET_BITS(NextInstruction, 4, 7) == 0x3)
+                        {
+                            printf("blx%s r%d\n", ConditionCodeStrings[ConditionCode], RegisterIndex);
+                        }
+                        else if (GET_BITS(NextInstruction, 4, 7) == 0x2)
+                        {
+                            printf("bxj%s r%d\n", ConditionCodeStrings[ConditionCode], RegisterIndex);
+                        }
+                        else
+                        {
+                            printf("bx%s r%d\n", ConditionCodeStrings[ConditionCode], RegisterIndex);
+                        }
+                        break;
+                    }
+                    case COUNT_LEADING_ZEROS:
+                    {
+                        if (GET_BITS(NextInstruction, 4, 7) == 1)
+                        {
+                            printf("clz%s r%d, r%d\n", ConditionCodeStrings[ConditionCode],
+                                                       GET_BITS(NextInstruction, 12, 15),
+                                                       NextInstruction & 0xF);
+                        }
+                        else
+                        {
+                            Stopif(true, return 1, "Unsupported instruction");
+                        }
                         break;
                     }
                     case LOAD_IMMEDIATE:
@@ -260,9 +390,11 @@ int main(int argc, char **argv)
                         uint32 BaseRegister = (NextInstruction >> 16) & 0xF;
                         uint32 RegisterIndex = (NextInstruction >> 12) & 0xF;
                         uint32 Offset = NextInstruction & 0xFFF;
-                        printf("ldr r%d,[r%d + #0x%x]\n", RegisterIndex, BaseRegister, Offset);
+                        printf("ldr%s r%d,[r%d + #0x%x]\n", ConditionCodeStrings[ConditionCode],
+                                                            RegisterIndex, BaseRegister, Offset);
                         break;
                     }
+                    // TODO(brendan): Condition codes etc.
                     case MOV_IMMEDIATE:
                     case MOV_IMMEDIATE_S:
                     {
