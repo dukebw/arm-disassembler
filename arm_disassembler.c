@@ -23,7 +23,7 @@ internal char *
 EncodingToMnemonic(uint32 InstructionEncoding)
 {
     static char *MnemonicArray[] = {
-        "adc", "adcs", "add", "adds", "and", "ands", "bic", "bics", "cmn"
+        "adc", "adcs", "add", "adds", "and", "ands", "bic", "bics", "cmn", "cmp", "eor", "eors"
     };
     switch (InstructionEncoding)
     {
@@ -72,6 +72,21 @@ EncodingToMnemonic(uint32 InstructionEncoding)
         {
             return MnemonicArray[8];
         }
+		case COMPARE:
+		case COMPARE_IMMEDIATE:
+		{
+			return MnemonicArray[9];
+		}
+		case EOR:
+		case EOR_IMMEDIATE:
+		{
+			return MnemonicArray[10];
+		}
+		case EOR_S:
+		case EOR_IMMEDIATE_S:
+		{
+			return MnemonicArray[11];
+		}
         default:
         {
             Stopif(true, return 0, "Bad InstructionEncoding");
@@ -84,7 +99,8 @@ internal bool32
 IsCompareInstruction(uint32 InstructionEncoding)
 {
     bool32 Result;
-    if ((InstructionEncoding == COMPARE_NEG) || (InstructionEncoding == COMPARE_NEG_IMMEDIATE))
+    if ((InstructionEncoding == COMPARE_NEG) || (InstructionEncoding == COMPARE_NEG_IMMEDIATE) ||
+		(InstructionEncoding == COMPARE) || (InstructionEncoding == COMPARE_IMMEDIATE))
     {
         Result = true;
     }
@@ -126,6 +142,93 @@ int main(int argc, char **argv)
             {
                 printf("bkpt 0x%x\n", (NextInstruction & 0xF) | (GET_BITS(NextInstruction, 8, 19) << 4));
             }
+			else if ((GET_BITS(NextInstruction, 20, 31) == 0xF10) &&
+					 (ISOLATE_BIT(NextInstruction, 16) == 0) &&
+					 (ISOLATE_BIT(NextInstruction, 5) == 0))
+			{
+				uint32 ABit = ISOLATE_BIT(NextInstruction, 8);
+				uint32 IBit = ISOLATE_BIT(NextInstruction, 7);
+				uint32 FBit = ISOLATE_BIT(NextInstruction, 6);
+				uint32 Mmod = ISOLATE_BIT(NextInstruction, 17);
+				uint32 Imod = GET_BITS(NextInstruction, 18, 19);
+				Stopif(((Mmod == 0) && !ISOLATE_BIT(Imod, 1)) || ((Imod == 0x1) && (Mmod == 0x1)),
+					   return 1,
+					   "Invalid cps opcode");
+				printf("cps");
+				if (Imod & 0x2)
+				{
+					char *Effect = (Imod & 0x1) ? "id" : "ie";
+					char *ABitString = ABit ? "a" : "";
+					char *IBitString = IBit ? "i" : "";
+					char *FBitString = FBit ? "f" : "";
+					printf("%s %s%s%s%s", Effect, ABitString, IBitString, FBitString,
+										  Mmod ? "," : "");
+				}
+				if (Mmod == 0x1)
+				{
+					printf(" #%d", NextInstruction & 0x1F);
+				}
+				printf("\n");
+			}
+			// TODO(brendan): remove when mov implemented (synonym)
+			else if ((InstructionEncoding == COPY) && (GET_BITS(NextInstruction, 4, 11) == 0))
+			{
+				printf("cpy%s r%d, r%d\n", ConditionCodeStrings[ConditionCode],
+										   GET_BITS(NextInstruction, 12, 15),
+										   NextInstruction & 0xF);
+			}
+			else if ((GET_BITS(NextInstruction, 25, 27) == 0x6) && ISOLATE_BIT(NextInstruction, 20))
+			{
+				uint32 Coprocessor = GET_BITS(NextInstruction, 8, 11);
+				uint32 CoprocessorRegister = GET_BITS(NextInstruction, 12, 15);
+				uint32 Register = GET_BITS(NextInstruction, 16, 19);
+				uint32 WBit = ISOLATE_BIT(NextInstruction, 21);
+				uint32 NBit = ISOLATE_BIT(NextInstruction, 22);
+				char *LString = NBit ? "l" : "";
+				if (ConditionCode == 0xF)
+				{
+					printf("ldc2%s p%d, c%d, ", LString, Coprocessor, CoprocessorRegister);
+				}
+				else
+				{
+					printf("ldc%s%s p%d, c%d, ", ConditionCodeStrings[ConditionCode], LString, Coprocessor,
+											     CoprocessorRegister);
+				}
+				char *AddressingMode;
+				uint32 Offset = (NextInstruction & 0xFF) << 2;
+				Offset = ISOLATE_BIT(NextInstruction, 23) ? Offset : -Offset;
+				if (ISOLATE_BIT(NextInstruction, 24))
+				{
+					AddressingMode = WBit ? "[r%d, #%d]!\n" : "[r%d, #%d]\n";
+				}
+				else
+				{
+					AddressingMode = WBit ? "[r%d], #%d\n" : "[r%d], {#%d}\n";
+				}
+				printf(AddressingMode, Register, Offset);
+			}
+			else if (GET_BITS(NextInstruction, 25, 27) == 0x4)
+			{
+				uint32 AddressingModeBits = GET_BITS(NextInstruction, 23, 24);
+				char *AddressingMode;
+				if (AddressingModeBits == 0x1)
+				{
+					AddressingMode = "ia";
+				}
+				else if (AddressingModeBits == 0x3)
+				{
+					AddressingMode = "ib";
+				}
+				else if (AddressingModeBits == 0x0)
+				{
+					AddressingMode = "da";
+				}
+				else
+				{
+					AddressingMode = "db";
+				}
+				printf("ldm%s%s\n", ConditionCodeStrings[ConditionCode], AddressingMode);
+			}
             // TODO(brendan): CDP
             else if ((GET_BITS(NextInstruction, 24, 27) == 0xE) && (ISOLATE_BIT(NextInstruction, 4) == 0))
             {
@@ -195,6 +298,12 @@ int main(int argc, char **argv)
                     case BIC_IMMEDIATE_S:
                     case COMPARE_NEG:
                     case COMPARE_NEG_IMMEDIATE:
+					case COMPARE:
+					case COMPARE_IMMEDIATE:
+					case EOR:
+					case EOR_IMMEDIATE:
+					case EOR_S:
+					case EOR_IMMEDIATE_S:
                     {
                         // TODO(brendan): implement?
                         Stopif(~ISOLATE_BIT(NextInstruction, 25) &

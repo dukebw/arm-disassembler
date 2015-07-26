@@ -83,6 +83,35 @@ _start:
     cmnvs r9, r10, ASR r11
     cmn r12, r13, ROR r14
     cmn r15, r0, ROR #15
+	cmp r2, #0xFF0
+	cmp r3, r4
+	cmp r5, r6, LSL #31
+	cmpeq r7, r8, ROR #15
+	cmpmi r9, r10, RRX
+	cpsid i
+	cpsid f
+	cpsie a, #31
+	cpsid if
+	cps #16
+	cpyeq r0, r1
+	cpypl r15, r14
+	cpyvc r2, r3
+	eoreqs r0, r1, r2, LSL r3
+	eor r4, r5, r6
+	eorvc r7, r8, r9, RRX
+	eor r10, r12, r11, ASR #31
+	ldc p15, c10, [pc, #0x100]
+	ldc p14, c7, [r0, #-0x100]
+	ldcne p13, c8, [r1, #0xF0]!
+	ldcvc p0, c0, [r14], #0x100
+	ldc p15, c15, [r15], {#0xFF}
+	ldceql p14, c14, [r14], #0x0
+	ldc2l p14, c14, [r14]
+	ldmfd sp!, {r1 - r12}
+	ldmia r0!, {r3 - r10}
+	ldmia r0!, {r1 - r12}
+	ldmia lr!, {r1 - r12}
+	ldmvcib r7!, {r1 - r3}
     movs r2, r3, LSL r0
 
 thumbstart_add:
