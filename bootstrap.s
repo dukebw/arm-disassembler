@@ -112,6 +112,29 @@ _start:
 	ldmia r0!, {r1 - r12}
 	ldmia lr!, {r1 - r12}
 	ldmvcib r7!, {r1 - r3}
+	ldmfd r9, {r1, r3, r5, r7}^
+	ldmdb r0!, {r2, r7, r15}^
+	ldr r0, [r1]
+	ldreq r2, [r3, r2, RRX]
+	ldrhi r4, [r1, #0x100]
+	ldrvc r5, [r6, r7, ROR #12]
+	ldr r8, [r9, #-0xFC]
+	ldrb r0, [r1, #0xFE]!
+	ldrb r8, [r9, r10, LSR #31]
+	strb r8, [r9, r10, LSL #31]
+	streqbt r8, [r11]
+	ldrmibt r0, [r1, r2, ROR #0]
+	ldr pc, [r9, sp]!
+	ldr pc, [r11, -sp]!
+	ldr r0, [r1, -r2, RRX]
+	ldr r3, [r4, -r5, LSL #15]!
+	ldr r0, [r1], r2
+	ldrbt r0, [r1], #0x100
+	ldrne r2, [r3], -r4, RRX
+	ldreq r4, [r5, r6, RRX]!
+	ldrhib r7, [r8, r9, LSL #31]!
+	ldrlob r10, [r11], r12, LSL #31
+	nop
     movs r2, r3, LSL r0
 
 thumbstart_add:
