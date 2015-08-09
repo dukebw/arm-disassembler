@@ -238,13 +238,6 @@ int main(int argc, char **argv)
 				}
 				printf("\n");
 			}
-			// TODO(brendan): remove when mov implemented (synonym)
-			else if ((InstructionEncoding == COPY) && (GET_BITS(NextInstruction, 4, 11) == 0))
-			{
-				printf("cpy%s r%d, r%d\n", ConditionCodeStrings[ConditionCode],
-										   GET_BITS(NextInstruction, 12, 15),
-										   NextInstruction & 0xF);
-			}
 			else if (((GET_BITS(NextInstruction, 25, 27) == 0x6) && ISOLATE_BIT(NextInstruction, 20)) &&
 					 (InstructionEncoding != MRRC))
 			{
@@ -558,7 +551,7 @@ int main(int argc, char **argv)
 			{
 				char *StatusRegister = ISOLATE_BIT(NextInstruction, 22) ? "spsr" : "cpsr";
 				char FieldsString[] = "cxsf";
-				char Fields[MSR_FIELDS_COUNT] = {};
+				char Fields[MSR_FIELDS_COUNT + 1] = {};
 				uint32 FieldMask = GET_BITS(NextInstruction, 16, 19);
 				for (uint32 FieldsStringIndex = 0, FieldsIndex = 0;
 					 FieldsStringIndex < MSR_FIELDS_COUNT;
@@ -572,8 +565,14 @@ int main(int argc, char **argv)
 				char SecondOperandString[MAX_OFFSET_STRING_LENGTH];
 				if ((InstructionEncoding == MSR_IMMEDIATE_CPSR) || (InstructionEncoding == MSR_IMMEDIATE_SPSR))
 				{
+					snprintf(SecondOperandString, MAX_OFFSET_STRING_LENGTH, "#0x%x", ComputeShifterOperand(NextInstruction));
 				}
-				printf("msr%s %s_%s\n", ConditionCodeStrings[ConditionCode], StatusRegister, Fields);
+				else
+				{
+					snprintf(SecondOperandString, MAX_OFFSET_STRING_LENGTH, "r%d", NextInstruction & 0xF);
+				}
+				printf("msr%s %s_%s, %s\n", ConditionCodeStrings[ConditionCode], StatusRegister, Fields,
+					   SecondOperandString);
 			}
             else
             {
