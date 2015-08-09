@@ -134,8 +134,51 @@ _start:
 	ldreq r4, [r5, r6, RRX]!
 	ldrhib r7, [r8, r9, LSL #31]!
 	ldrlob r10, [r11], r12, LSL #31
-	nop
+	ldreqd r0, [r2]
+	strned r2, [r1, #0xFF]
+	ldrvcsb r11, [r12, #-0xFC]!
+	ldrplsh r13, [r14, -r12]
+	strhih r0, [r1, r2]
+	ldrmish r3, [r4], #-0xF0
+	ldrd r4, [r6], #0xF
+	streqh r7, [r8], -r9
+	ldrvsd r0, [r3, -r4]!
+	ldrex r0, [r1]
+	ldrexeq r2, [r14]
+	ldrt r0, [r1]
+	ldrt r2, [r3], #0xF00
+	mcr	p15, 0, r0, c1, c0, 0
+	mcr p15, 0, r0, c7, c10
+	mcr p15, 0, r0, c7, c5, 0
+	mcr p7, 7, r0, c7, c5, 7
+	mcrrne	p15, 4, r4, r4, c14
+	mcrr2 p14, 7, r0, r14, c15
+	mla r0, r1, r2, r3
+	mlaeq r4, r5, r6, r7
+	mlas r8, r9, r10, r11
+	mlaeqs r12, r13, r14, r10
+	moveq r0, r1, LSL #17
+	movvcs r3, r4, LSL r6
+	mov r7, #0x10400
+	movvs r8, r10
+	movhis r11, r13, RRX
     movs r2, r3, LSL r0
+	mrc	p15, 0, r1, c0, c0, 1
+	mrc	p14, 7, r15, c3, c7, 6
+	mrrc p15, 7, r9, r13, c7
+	mrrcne p14, 6, r14, r12, c6
+	mrrc2 p13, 5, r11, r10, c5
+	mrs	lr, spsr
+	mrs lr, cpsr
+	mrseq r9, cpsr
+	msr	spsr, r13
+	msrvc cpsr, r9
+	msrne cpsr_cxsf, #0xFF00
+	msr cpsr_f, r0
+	msrmi spsr_cxsf, #0xFF
+	msrpl spsr_xs, #0x100
+	msrhi spsr_cf, r15
+	nop
 
 thumbstart_add:
 	.word thumbstart

@@ -25,7 +25,8 @@ EncodingToMnemonic(uint32 InstructionEncoding)
 {
     static char *MnemonicArray[] =
 	{
-        "adc", "adcs", "add", "adds", "and", "ands", "bic", "bics", "cmn", "cmp", "eor", "eors"
+        "adc", "adcs", "add", "adds", "and", "ands", "bic", "bics", "cmn", "cmp", "eor", "eors",
+		"mov", "movs"
     };
     switch (InstructionEncoding)
     {
@@ -88,6 +89,16 @@ EncodingToMnemonic(uint32 InstructionEncoding)
 		case EOR_IMMEDIATE_S:
 		{
 			return MnemonicArray[11];
+		}
+		case MOV:
+		case MOV_IMMEDIATE:
+		{
+			return MnemonicArray[12];
+		}
+		case MOV_S:
+		case MOV_IMMEDIATE_S:
+		{
+			return MnemonicArray[13];
 		}
         default:
         {
@@ -177,10 +188,28 @@ int main(int argc, char **argv)
 		{
 			uint32 ConditionCode = NextInstruction >> 28;
 			uint32 InstructionEncoding = (NextInstruction >> 20) & 0xFF;
-            if ((GET_BITS(NextInstruction, 20, 31) == 0xE12) && (GET_BITS(NextInstruction, 4, 7) == 0x7))
-            {
-                printf("bkpt 0x%x\n", (NextInstruction & 0xF) | (GET_BITS(NextInstruction, 8, 19) << 4));
-            }
+			if ((GET_BITS(NextInstruction, 20, 31) == 0xE12) && (GET_BITS(NextInstruction, 4, 7) == 0x7))
+			{
+				printf("bkpt 0x%x\n", (NextInstruction & 0xF) | (GET_BITS(NextInstruction, 8, 19) << 4));
+			}
+			else if ((InstructionEncoding == BRANCH_EXCHANGE) &&
+					 ((GET_BITS(NextInstruction, 4, 7) == 0x1) || (GET_BITS(NextInstruction, 4, 7) == 0x2) ||
+					  (GET_BITS(NextInstruction, 4, 7) == 0x3)))
+			{
+				uint32 RegisterIndex = NextInstruction & 0xF;
+				if (GET_BITS(NextInstruction, 4, 7) == 0x3)
+				{
+					printf("blx%s r%d\n", ConditionCodeStrings[ConditionCode], RegisterIndex);
+				}
+				else if (GET_BITS(NextInstruction, 4, 7) == 0x2)
+				{
+					printf("bxj%s r%d\n", ConditionCodeStrings[ConditionCode], RegisterIndex);
+				}
+				else
+				{
+					printf("bx%s r%d\n", ConditionCodeStrings[ConditionCode], RegisterIndex);
+				}
+			}
 			else if ((GET_BITS(NextInstruction, 20, 31) == 0xF10) &&
 					 (ISOLATE_BIT(NextInstruction, 16) == 0) &&
 					 (ISOLATE_BIT(NextInstruction, 5) == 0))
@@ -216,7 +245,8 @@ int main(int argc, char **argv)
 										   GET_BITS(NextInstruction, 12, 15),
 										   NextInstruction & 0xF);
 			}
-			else if ((GET_BITS(NextInstruction, 25, 27) == 0x6) && ISOLATE_BIT(NextInstruction, 20))
+			else if (((GET_BITS(NextInstruction, 25, 27) == 0x6) && ISOLATE_BIT(NextInstruction, 20)) &&
+					 (InstructionEncoding != MRRC))
 			{
 				uint32 Coprocessor = GET_BITS(NextInstruction, 8, 11);
 				uint32 CoprocessorRegister = GET_BITS(NextInstruction, 12, 15);
@@ -400,15 +430,150 @@ int main(int argc, char **argv)
 						   FirstOperandRegister, OffsetString);
 				}
 			}
+			// TODO(brendan): compress with addressing mode 2?
 			else if ((GET_BITS(NextInstruction, 25, 27) == 0) && ISOLATE_BIT(NextInstruction, 7) &&
 					 ISOLATE_BIT(NextInstruction, 4))
 			{
-				// TODO(brendan): finish ldrd/strd
-				char *InstructionMnemonic = GetLoadStoreString(NextInstruction);
-				uint32 DestinationRegister = (NextInstruction >> 12) & 0xF;
-				uint32 FirstOperandRegister = (NextInstruction >> 16) & 0xF;
-				printf("%s%sd r%d, [r%d]", InstructionMnemonic, ConditionCodeStrings[ConditionCode],
-					   DestinationRegister, FirstOperandRegister);
+				if ((InstructionEncoding == 0x19) && (GET_BITS(NextInstruction, 4, 7) == 0x9))
+				{
+					printf("ldrex%s r%d, [r%d]\n", ConditionCodeStrings[ConditionCode],
+						   (NextInstruction >> 12) & 0xF, (NextInstruction >> 16) & 0xF);
+				}
+				else if ((GET_BITS(NextInstruction, 21, 27) == 0x1) &&
+						 (GET_BITS(NextInstruction, 4, 7) == 0x9))
+				{
+					uint32 DestinationRegister = GET_BITS(NextInstruction, 16, 19);
+					uint32 AddRegisterN = GET_BITS(NextInstruction, 12, 15);
+					uint32 MultiplyRegisterM = NextInstruction & 0xF;
+					uint32 MultiplyRegisterS = GET_BITS(NextInstruction, 8, 11);
+					printf("mla%s%s r%d, r%d, r%d, r%d\n", ConditionCodeStrings[ConditionCode],
+						   ISOLATE_BIT(NextInstruction, 20) ? "s" : "",
+						   DestinationRegister, MultiplyRegisterM, MultiplyRegisterS, AddRegisterN);
+				}
+				else
+				{
+					char FirstWord[MAX_OFFSET_STRING_LENGTH];
+					uint32 LBit = ISOLATE_BIT(NextInstruction, 20);
+					uint32 SBit = ISOLATE_BIT(NextInstruction, 6);
+					uint32 HBit = ISOLATE_BIT(NextInstruction, 5);
+					if (!LBit && !SBit && HBit)
+					{
+						snprintf(FirstWord, MAX_OFFSET_STRING_LENGTH, "str%sh",
+								 ConditionCodeStrings[ConditionCode]);
+					}
+					else if (!LBit && SBit && !HBit)
+					{
+						snprintf(FirstWord, MAX_OFFSET_STRING_LENGTH, "ldr%sd",
+								 ConditionCodeStrings[ConditionCode]);
+					}
+					else if (!LBit && SBit && HBit)
+					{
+						snprintf(FirstWord, MAX_OFFSET_STRING_LENGTH, "str%sd",
+								 ConditionCodeStrings[ConditionCode]);
+					}
+					else if (LBit && !SBit && HBit)
+					{
+						snprintf(FirstWord, MAX_OFFSET_STRING_LENGTH, "ldr%sh",
+								 ConditionCodeStrings[ConditionCode]);
+					}
+					else if (LBit && SBit && !HBit)
+					{
+						snprintf(FirstWord, MAX_OFFSET_STRING_LENGTH, "ldr%ssb",
+								 ConditionCodeStrings[ConditionCode]);
+					}
+					else if (LBit && SBit && HBit)
+					{
+						snprintf(FirstWord, MAX_OFFSET_STRING_LENGTH, "ldr%ssh",
+								 ConditionCodeStrings[ConditionCode]);
+					}
+					else
+					{
+						Stopif(true, return 1, "Bad instruction mnemonic (ldrsh type)");
+					}
+					uint32 DestinationRegister = (NextInstruction >> 12) & 0xF;
+					uint32 FirstOperandRegister = (NextInstruction >> 16) & 0xF;
+					uint32 PBit = ISOLATE_BIT(NextInstruction, 24);
+					uint32 UBit = ISOLATE_BIT(NextInstruction, 23);
+					uint32 ImmediateBit = ISOLATE_BIT(NextInstruction, 22);
+					uint32 WBit = ISOLATE_BIT(NextInstruction, 21);
+					char OffsetString[MAX_OFFSET_STRING_LENGTH];
+					char *Negative = UBit ? "" : "-";
+					char *PreIndexedString = "";
+					if (WBit && PBit)
+					{
+						PreIndexedString = "!";
+					}
+					if (ImmediateBit)
+					{
+						uint32 Offset = (GET_BITS(NextInstruction, 8, 11) << 4) | (NextInstruction & 0xF);
+						snprintf(OffsetString, MAX_OFFSET_STRING_LENGTH, "#%s0x%x", Negative, Offset);
+					}
+					else if (!ImmediateBit)
+					{
+						uint32 SecondOperandRegister = NextInstruction & 0xF;
+						snprintf(OffsetString, MAX_OFFSET_STRING_LENGTH, "%sr%d", Negative,
+								 SecondOperandRegister);
+					}
+					else
+					{
+						Stopif(true, return 1, "Illegal addressing mode 3 instruction");
+					}
+					if (PBit)
+					{
+						printf("%s r%d, [r%d, %s]%s\n", FirstWord, DestinationRegister,
+							   FirstOperandRegister, OffsetString, PreIndexedString);
+					}
+					else
+					{
+						printf("%s r%d, [r%d], %s\n", FirstWord, DestinationRegister,
+							   FirstOperandRegister, OffsetString);
+					}
+				}
+			}
+			else if ((GET_BITS(NextInstruction, 24, 27) == 0xE) && ISOLATE_BIT(NextInstruction, 4))
+			{
+				uint32 OpCode1 = GET_BITS(NextInstruction, 21, 23);
+				uint32 OpCode2 = GET_BITS(NextInstruction, 5, 7);
+				uint32 Coprocessor = GET_BITS(NextInstruction, 8, 11);
+				uint32 SourceRegister = GET_BITS(NextInstruction, 12, 15);
+				uint32 DestinationCpReg = GET_BITS(NextInstruction, 16, 19);
+				uint32 ExtraCpReg = NextInstruction & 0xF;
+				char *InstructionMnemonic = ISOLATE_BIT(NextInstruction, 20) ? "mrc" : "mcr";
+				if (ConditionCode == 0xF)
+				{
+					printf("%s2 p%d, %d, r%d, c%d, c%d, %d\n", InstructionMnemonic, Coprocessor, OpCode1,
+						   SourceRegister, DestinationCpReg, ExtraCpReg, OpCode2);
+				}
+				else
+				{
+					printf("%s%s p%d, %d, r%d, c%d, c%d, %d\n", InstructionMnemonic,
+						   ConditionCodeStrings[ConditionCode], Coprocessor, OpCode1, SourceRegister,
+						   DestinationCpReg, ExtraCpReg, OpCode2);
+				}
+			}
+			else if (((InstructionEncoding == MSR_IMMEDIATE_CPSR) ||
+					  (InstructionEncoding == MSR_IMMEDIATE_SPSR)) ||
+					 (((InstructionEncoding == MSR_REGISTER_CPSR) ||
+					   (InstructionEncoding == MSR_REGISTER_SPSR)) && (GET_BITS(NextInstruction, 4, 7) == 0)))
+			{
+				char *StatusRegister = ISOLATE_BIT(NextInstruction, 22) ? "spsr" : "cpsr";
+				char FieldsString[] = "cxsf";
+				char Fields[MSR_FIELDS_COUNT] = {};
+				uint32 FieldMask = GET_BITS(NextInstruction, 16, 19);
+				for (uint32 FieldsStringIndex = 0, FieldsIndex = 0;
+					 FieldsStringIndex < MSR_FIELDS_COUNT;
+					 ++FieldsStringIndex)
+				{
+					if (FieldMask & (1 << FieldsStringIndex))
+					{
+						Fields[FieldsIndex++] = FieldsString[FieldsStringIndex];
+					}
+				}
+				char SecondOperandString[MAX_OFFSET_STRING_LENGTH];
+				if ((InstructionEncoding == MSR_IMMEDIATE_CPSR) || (InstructionEncoding == MSR_IMMEDIATE_SPSR))
+				{
+				}
+				printf("msr%s %s_%s\n", ConditionCodeStrings[ConditionCode], StatusRegister, Fields);
 			}
             else
             {
@@ -438,6 +603,10 @@ int main(int argc, char **argv)
 					case EOR_IMMEDIATE:
 					case EOR_S:
 					case EOR_IMMEDIATE_S:
+					case MOV:
+					case MOV_S:
+                    case MOV_IMMEDIATE:
+                    case MOV_IMMEDIATE_S:
                     {
                         // TODO(brendan): implement?
                         Stopif(~ISOLATE_BIT(NextInstruction, 25) & ISOLATE_BIT(NextInstruction, 4) &
@@ -498,30 +667,20 @@ int main(int argc, char **argv)
 								   ConditionCodeStrings[ConditionCode], FirstOperandRegister,
 								   SecondOperandString);
 						}
+						else if ((InstructionEncoding == MOV) || (InstructionEncoding == MOV_S) ||
+								 (InstructionEncoding == MOV_IMMEDIATE) ||
+								 (InstructionEncoding == MOV_IMMEDIATE_S))
+						{
+							printf("%s%s r%d, %s\n", EncodingToMnemonic(InstructionEncoding),
+								   ConditionCodeStrings[ConditionCode], DestinationRegister,
+								   SecondOperandString);
+						}
 						else
 						{
 							printf("%s%s r%d, r%d, %s\n", EncodingToMnemonic(InstructionEncoding),
 								   ConditionCodeStrings[ConditionCode], DestinationRegister,
 								   FirstOperandRegister, SecondOperandString);
 						}
-                        break;
-                    }
-                    // TODO(brendan): Index instruction mnemonic in string array?
-                    case BRANCH_EXCHANGE:
-                    {
-                        uint32 RegisterIndex = NextInstruction & 0xF;
-                        if (GET_BITS(NextInstruction, 4, 7) == 0x3)
-                        {
-                            printf("blx%s r%d\n", ConditionCodeStrings[ConditionCode], RegisterIndex);
-                        }
-                        else if (GET_BITS(NextInstruction, 4, 7) == 0x2)
-                        {
-                            printf("bxj%s r%d\n", ConditionCodeStrings[ConditionCode], RegisterIndex);
-                        }
-                        else
-                        {
-                            printf("bx%s r%d\n", ConditionCodeStrings[ConditionCode], RegisterIndex);
-                        }
                         break;
                     }
                     case COUNT_LEADING_ZEROS:
@@ -538,31 +697,35 @@ int main(int argc, char **argv)
                         }
                         break;
                     }
-                    // TODO(brendan): Condition codes etc.
-                    case MOV_IMMEDIATE:
-                    case MOV_IMMEDIATE_S:
-                    {
-                        uint32 ShifterOperand  = ComputeShifterOperand(NextInstruction);
-                        uint32 RegisterIndex = (NextInstruction >> 12) & 0xF;
-                        printf("mov");
-                        printf("%s", ConditionCodeStrings[ConditionCode]);
-                        if (S_BIT(NextInstruction))
-                        {
-                            printf("s");
-                        }
-                        printf(" r%d,#0x%x\n", RegisterIndex, ShifterOperand);
-                        break;
-                    }
+					case MCRR:
+					case MRRC:
+					{
+						uint32 FirstArmRegister = GET_BITS(NextInstruction, 12, 15);
+						uint32 SecondArmRegister = GET_BITS(NextInstruction, 16, 19);
+						uint32 Coprocessor = GET_BITS(NextInstruction, 8, 11);
+						uint32 OpCode = GET_BITS(NextInstruction, 4, 7);
+						uint32 DestinationCpReg = NextInstruction & 0xF;
+						char *InstructionMnemonic = (InstructionEncoding == MCRR) ? "mcrr" : "mrrc";
+						if (ConditionCode == 0xF)
+						{
+							printf("%s2 p%d, %d, r%d, r%d, c%d\n", InstructionMnemonic, Coprocessor, OpCode,
+								   FirstArmRegister, SecondArmRegister, DestinationCpReg);
+						}
+						else
+						{
+							printf("%s%s p%d, %d, r%d, r%d, c%d\n", InstructionMnemonic,
+								   ConditionCodeStrings[ConditionCode], Coprocessor, OpCode,
+								   FirstArmRegister, SecondArmRegister, DestinationCpReg);
+						}
+						break;
+					}
                     case MRS_SPSR:
-                    {
-                        uint32 RegisterIndex = GET_BITS(NextInstruction, 12, 15);
-                        printf("mrs r%d,SPSR\n", RegisterIndex);
-                        break;
-                    }
                     case MRS_CPSR:
                     {
                         uint32 RegisterIndex = GET_BITS(NextInstruction, 12, 15);
-                        printf("mrs r%d,CPSR\n", RegisterIndex);
+						char *StatusRegister = ISOLATE_BIT(NextInstruction, 22) ? "spsr" : "cpsr";
+                        printf("mrs%s r%d, %s\n", ConditionCodeStrings[ConditionCode], RegisterIndex,
+							   StatusRegister);
                         break;
                     }
                     default:
