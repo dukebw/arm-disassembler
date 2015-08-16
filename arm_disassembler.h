@@ -46,6 +46,14 @@
 #define MSR_IMMEDIATE_SPSR					0x36
 #define MSR_REGISTER_CPSR					0x12
 #define MSR_REGISTER_SPSR					0x16
+#define MVN									0x1E
+#define MVN_S								0x1F
+#define MVN_IMMEDIATE						0x3E
+#define MVN_IMMEDIATE_S						0x3F
+#define ORR									0x18
+#define ORR_S								0x19
+#define ORR_IMMEDIATE						0x38
+#define ORR_IMMEDIATE_S						0x39
 
 #define LINK_REGISTER						14
 #define PROGRAM_COUNTER_REGISTER			15
@@ -113,5 +121,33 @@
 #define S_BIT(Instruction) ISOLATE_BIT((Instruction), S_BIT_INDEX)
 
 #define SET_BIT(Register, Value, BitToSet) (Register) |= (((Value) & 1) << (BitToSet))
+
+#define QDADD_CONDITION(InstructionEncoding, SecondOpcode) \
+	(((InstructionEncoding) == 0x14) && ((SecondOpcode) == 0x5))
+#define QADD_CONDITION(InstructionEncoding, SecondOpcode) \
+	(((InstructionEncoding) == 0x10) && ((SecondOpcode) == 0x5))
+#define QADD16_CONDITION(InstructionEncoding, SecondOpcode) \
+	(((InstructionEncoding) == 0x62) && ((SecondOpcode) == 0x1))
+#define QADD8_CONDITION(InstructionEncoding, SecondOpcode) \
+	(((InstructionEncoding) == 0x62) && ((SecondOpcode) == 0x9))
+#define QADDSUBX_CONDITION(InstructionEncoding, SecondOpcode) \
+	(((InstructionEncoding) == 0x62) && ((SecondOpcode) == 0x3))
+#define QDSUB_CONDITION(InstructionEncoding, SecondOpcode) \
+	(((InstructionEncoding) == 0x16) && ((SecondOpcode) == 0x5))
+#define QSUB_CONDITION(InstructionEncoding, SecondOpcode) \
+	(((InstructionEncoding) == 0x12) && ((SecondOpcode) == 0x5))
+#define QSUB16_CONDITION(InstructionEncoding, SecondOpcode) \
+	(((InstructionEncoding) == 0x62) && ((SecondOpcode) == 0x7))
+#define QSUB8_CONDITION(InstructionEncoding, SecondOpcode) \
+	(((InstructionEncoding) == 0x62) && ((SecondOpcode) == 0xF))
+#define QSUBADDX_CONDITION(InstructionEncoding, SecondOpcode) \
+	(((InstructionEncoding) == 0x62) && ((SecondOpcode) == 0x5))
+
+#define REV_CONDITION(InstructionEncoding, SecondOpcode) \
+	(((InstructionEncoding) == 0x6B) && ((SecondOpcode) == 0x3))
+#define REV16_CONDITION(InstructionEncoding, SecondOpcode) \
+	(((InstructionEncoding) == 0x6B) && ((SecondOpcode) == 0xB))
+#define REVSH_CONDITION(InstructionEncoding, SecondOpcode) \
+	(((InstructionEncoding) == 0x6F) && ((SecondOpcode) == 0xB))
 
 #endif // _ARM_DISASSEMBLER_H_

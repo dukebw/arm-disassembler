@@ -20,7 +20,7 @@ _start:
 	movle sp, #0x13400
 	movs sp, #0x13800
     adc sp, sp, sp
-    adc r0, r1, r2, LSL #0x10
+    adc r0, r1, r2, LSL #16
     adcs r0, r1, r2, LSL r3
     add r9, r8, r7, LSR #31
     add r9, r8, r7, LSR r6
@@ -178,6 +178,39 @@ _start:
 	msrmi spsr_cxsf, #0xFF
 	msrpl spsr_xs, #0x100
 	msrhi spsr_cf, r15
+	mul r0, r1, r2
+	muls r3, r4, r5
+	mvneqs r0, r1, LSL r2
+	mvn r3, r4, RRX
+	mvns r3, #0x10000
+	orrpls r7, r8, r9, ASR #31
+	orrs r10, r11, #0x10800
+	orr r15, r14, r13, RRX
+	pkhbteq r0, r1, r2
+	pkhbt r3, r4, r5, LSL #31
+	pkhtbvc r6, r7, r8, ASR #1
+	pkhtb r6, r7, r8, ASR #16
+	pld	[r1, #0]
+	pld	[r1, #92]
+	pld [r2, r3, ROR #12]
+	pld [r4, -r5, RRX]
+	qaddmi r0, r1, r2
+	qdadd r0, r1, r2
+	qadd r12, r14, r13
+	qadd16 r12, r14, r13
+	qadd8 r12, r14, r13
+	qaddsubx r12, r14, r13
+	qdsub r0, r1, r2
+	qsub r12, r14, r13
+	qsub16 r12, r14, r13
+	qsub8 r12, r14, r13
+	qsubaddx r12, r14, r13
+	reveq r0, r1
+	rev r2, r3
+	rev16 r4, r5
+	revsh r6, r7
+	rfeia r0!
+	rfedb sp
 	nop
 
 thumbstart_add:
