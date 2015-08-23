@@ -54,6 +54,18 @@
 #define ORR_S								0x19
 #define ORR_IMMEDIATE						0x38
 #define ORR_IMMEDIATE_S						0x39
+#define RSB									0x06
+#define RSB_S								0x07
+#define RSB_IMMEDIATE						0x26
+#define RSB_IMMEDIATE_S						0x27
+#define RSC									0x0E
+#define RSC_S								0x0F
+#define RSC_IMMEDIATE						0x2E
+#define RSC_IMMEDIATE_S						0x2F
+#define SBC									0x0C
+#define SBC_S								0x0D
+#define SBC_IMMEDIATE						0x2C
+#define SBC_IMMEDIATE_S						0x2D
 
 #define LINK_REGISTER						14
 #define PROGRAM_COUNTER_REGISTER			15
@@ -142,6 +154,13 @@
 	(((InstructionEncoding) == 0x62) && ((SecondOpcode) == 0xF))
 #define QSUBADDX_CONDITION(InstructionEncoding, SecondOpcode) \
 	(((InstructionEncoding) == 0x62) && ((SecondOpcode) == 0x5))
+
+#define SADD16_CONDITION(InstructionEncoding, SecondOpcode) \
+	(((InstructionEncoding) == 0x61) && ((SecondOpcode) == 0x1))
+#define SADD8_CONDITION(InstructionEncoding, SecondOpcode) \
+	(((InstructionEncoding) == 0x61) && ((SecondOpcode) == 0x9))
+#define SADDSUBX_CONDITION(InstructionEncoding, SecondOpcode) \
+	(((InstructionEncoding) == 0x61) && ((SecondOpcode) == 0x3))
 
 #define REV_CONDITION(InstructionEncoding, SecondOpcode) \
 	(((InstructionEncoding) == 0x6B) && ((SecondOpcode) == 0x3))

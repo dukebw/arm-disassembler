@@ -211,6 +211,25 @@ _start:
 	revsh r6, r7
 	rfeia r0!
 	rfedb sp
+	rsb r0, r1, r2
+	rsbs r3, r4, r5, LSL r6
+	rsbeq r7, r8, #0x1F000
+	rsbhis r9, r10, r11, RRX
+	rsc r0, r1, r2
+	rscs r3, r4, r5, ASR r6
+	rsceqs r7, r8, #0x33000
+	rscpl r9, r10, r11, ASL #16
+	sadd16 r0, r1, r2
+	sadd16eq r0, r1, r2
+	sadd8cc r3, r4, r5
+	sadd8 r3, r4, r5
+	saddsubxhs r6, r7, r8
+	saddsubx r6, r7, r8
+	sbc r0, r1, r2
+	sbcs r3, r4, r5, LSR r6
+	sbcvc r7, r8, #0x7F00
+	sbcvss r9, r10, r11, RRX
+	sbceq r12, r13, r14, LSL #15
 	nop
 
 thumbstart_add:

@@ -26,7 +26,7 @@ EncodingToMnemonic(uint32 InstructionEncoding)
     static char *MnemonicArray[] =
 	{
         "adc", "adcs", "add", "adds", "and", "ands", "bic", "bics", "cmn", "cmp", "eor", "eors",
-		"mov", "movs", "mvn", "mvns", "orr", "orrs"
+		"mov", "movs", "mvn", "mvns", "orr", "orrs", "rsb", "rsbs", "rsc", "rscs", "sbc", "sbcs"
     };
     switch (InstructionEncoding)
     {
@@ -119,6 +119,36 @@ EncodingToMnemonic(uint32 InstructionEncoding)
 		case ORR_IMMEDIATE_S:
 		{
 			return MnemonicArray[17];
+		}
+		case RSB:
+		case RSB_IMMEDIATE:
+		{
+			return MnemonicArray[18];
+		}
+		case RSB_S:
+		case RSB_IMMEDIATE_S:
+		{
+			return MnemonicArray[19];
+		}
+		case RSC:
+		case RSC_IMMEDIATE:
+		{
+			return MnemonicArray[20];
+		}
+		case RSC_S:
+		case RSC_IMMEDIATE_S:
+		{
+			return MnemonicArray[21];
+		}
+		case SBC:
+		case SBC_IMMEDIATE:
+		{
+			return MnemonicArray[22];
+		}
+		case SBC_S:
+		case SBC_IMMEDIATE_S:
+		{
+			return MnemonicArray[23];
 		}
         default:
         {
@@ -515,7 +545,10 @@ int main(int argc, char **argv)
 					 QSUB_CONDITION(InstructionEncoding, SecondOpcode) ||
 					 QSUB16_CONDITION(InstructionEncoding, SecondOpcode) ||
 					 QSUB8_CONDITION(InstructionEncoding, SecondOpcode) ||
-					 QSUBADDX_CONDITION(InstructionEncoding, SecondOpcode))
+					 QSUBADDX_CONDITION(InstructionEncoding, SecondOpcode) ||
+					 SADD16_CONDITION(InstructionEncoding, SecondOpcode) ||
+					 SADD8_CONDITION(InstructionEncoding, SecondOpcode) ||
+					 SADDSUBX_CONDITION(InstructionEncoding, SecondOpcode))
 			{
 				if (QDADD_CONDITION(InstructionEncoding, SecondOpcode))
 				{
@@ -556,6 +589,18 @@ int main(int argc, char **argv)
 				else if (QSUBADDX_CONDITION(InstructionEncoding, SecondOpcode))
 				{
 					InstructionMnemonic = "qsubaddx";
+				}
+				else if (SADD16_CONDITION(InstructionEncoding, SecondOpcode))
+				{
+					InstructionMnemonic = "sadd16";
+				}
+				else if (SADD8_CONDITION(InstructionEncoding, SecondOpcode))
+				{
+					InstructionMnemonic = "sadd8";
+				}
+				else if (SADDSUBX_CONDITION(InstructionEncoding, SecondOpcode))
+				{
+					InstructionMnemonic = "saddsubx";
 				}
 				else
 				{
@@ -714,7 +759,8 @@ int main(int argc, char **argv)
 				char SecondOperandString[MAX_OFFSET_STRING_LENGTH];
 				if ((InstructionEncoding == MSR_IMMEDIATE_CPSR) || (InstructionEncoding == MSR_IMMEDIATE_SPSR))
 				{
-					snprintf(SecondOperandString, MAX_OFFSET_STRING_LENGTH, "#0x%x", ComputeShifterOperand(NextInstruction));
+					snprintf(SecondOperandString, MAX_OFFSET_STRING_LENGTH, "#0x%x",
+							 ComputeShifterOperand(NextInstruction));
 				}
 				else
 				{
@@ -744,8 +790,8 @@ int main(int argc, char **argv)
 					Stopif(true, return 1, "Bad rev instruction");
 				}
 				ComputeSecondDestination(&SecondOperandRegister, &DestinationRegister, NextInstruction);
-				printf("%s%s r%d, r%d\n", InstructionMnemonic, ConditionCodeStrings[ConditionCode], DestinationRegister,
-					   SecondOperandRegister);
+				printf("%s%s r%d, r%d\n", InstructionMnemonic, ConditionCodeStrings[ConditionCode],
+					   DestinationRegister, SecondOperandRegister);
 			}
 			else if (GET_BITS(NextInstruction, 26, 27) == 0x1)
 			{
@@ -757,8 +803,9 @@ int main(int argc, char **argv)
 					ComputeFirstSecond(&FirstOperandRegister, &SecondOperandRegister, NextInstruction);
 					InstructionMnemonic = PackHalfByteBottomTop ? "pkhbt" : "pkhtb";
 					char *ShiftString = PackHalfByteBottomTop ? "LSL" : "ASR";
-					printf("%s%s r%d, r%d, r%d, %s #%d\n", InstructionMnemonic, ConditionCodeStrings[ConditionCode],
-						   GET_BITS(NextInstruction, 12, 15), FirstOperandRegister, SecondOperandRegister, ShiftString,
+					printf("%s%s r%d, r%d, r%d, %s #%d\n", InstructionMnemonic,
+						   ConditionCodeStrings[ConditionCode], GET_BITS(NextInstruction, 12, 15),
+						   FirstOperandRegister, SecondOperandRegister, ShiftString,
 						   GET_BITS(NextInstruction, 7, 11));
 				}
 				else if ((ConditionCode == 0xF) && ISOLATE_BIT(NextInstruction, 24) &&
@@ -833,6 +880,18 @@ int main(int argc, char **argv)
 					case ORR_S:
 					case ORR_IMMEDIATE:
 					case ORR_IMMEDIATE_S:
+					case RSB:
+					case RSB_IMMEDIATE:
+					case RSB_S:
+					case RSB_IMMEDIATE_S:
+					case RSC:
+					case RSC_IMMEDIATE:
+					case RSC_S:
+					case RSC_IMMEDIATE_S:
+					case SBC:
+					case SBC_IMMEDIATE:
+					case SBC_S:
+					case SBC_IMMEDIATE_S:
                     {
                         Stopif(~ISOLATE_BIT(NextInstruction, 25) & ISOLATE_BIT(NextInstruction, 4) &
                                ISOLATE_BIT(NextInstruction, 7),
